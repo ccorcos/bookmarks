@@ -134,18 +134,24 @@ indexUrls = (urls, callbackDone) ->
         fetchUrl url, (err, html) ->
           if err
             errorUrls.push(url)
-            callbackFetch(err)
+            # don't ruin it for everyone else!
+            callbackFetch()
+            # callbackFetch(err)
           else
             [title, text] = cleanHTML(html)
             db.insert {url:url, title:title, text:text, createdAt: Date.now()}, (err, doc) ->
               if err
-                callbackFetch(err)
+                # don't ruin it for everyone else!
+                errorPrint err
+                callbackFetch()
+                # callbackFetch(err)
               else
                 classifier.addDocument(doc.url + ' ' + doc.title.toLowerCase() + ' ' + doc.text, doc._id)
                 callbackFetch()
 
 
   doneFetching = (err) ->
+    if err then errorPrint err
     debugPrint("training classifier")
     classifier.train()
     debugPrint("serializing classifier")
@@ -195,9 +201,6 @@ rebuildClassifier = (callbackDone) ->
   db.find {}, (err, docs) ->
     if docs.length isnt 0
       async.each docs, update, done
-
-
-
 
 
 search = (text, n, callbackResults) ->

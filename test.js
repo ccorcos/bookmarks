@@ -5,13 +5,6 @@ async = require('async');
 exec = require('child_process').exec;
 urllib = require('url')
 
-p = exec("./test.sh", function(error, stdout, stderr) {
-  urls = stdout.split('\n')
-  console.log(urls)
-  return fetchUrls(urls, function() {
-    return console.log("finished");
-  });
-});
 
 fetchUrls = function(urls, callback) {
 
@@ -19,7 +12,6 @@ fetchUrls = function(urls, callback) {
     fetchUrlData(url, function(err, result) {
       if (err) {
         callback(err)
-        // callback()
       } else {
         console.log("fetched")
         callback(null)
@@ -31,7 +23,6 @@ fetchUrls = function(urls, callback) {
     if (err) {
       console.log(err)
       callback()
-      // console.log()
     } else {
       console.log("done fetching")
       callback()
@@ -55,6 +46,13 @@ fetchUrlData = function(url, callback) {
     })
   }).on('error', function(err) {
     callback(err)
-    // callback()
   });
 }
+
+p = exec("./test.sh", function(error, stdout, stderr) {
+  urls = stdout.split('\n')
+  console.log(urls)
+  return fetchUrls(urls, function() {
+    return console.log("finished");
+  });
+});
