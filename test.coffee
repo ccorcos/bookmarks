@@ -17,10 +17,13 @@ fetchUrl = (url, callbackErrHtml) ->
   response = (r) ->
     if r.statusCode isnt 200
       callbackErrHtml('status code isnt 200')
+      # here
     else if not r.headers['content-type']?
       callbackErrHtml('no content type')
+      # here
     else if r.headers['content-type'].indexOf('html') is -1
       callbackErrHtml('no html')
+      # here
     else
       html = ''
       r.on 'data', (chunk) -> html += chunk
@@ -45,7 +48,7 @@ indexUrls = (urls, callbackDone) ->
       else
         fetchUrl url, (err, html) ->
           if err
-            console.log "2 - done", url
+            console.log "2 - done", url, err
             errorUrls.push(url)
             callbackFetch()
           else

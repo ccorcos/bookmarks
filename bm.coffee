@@ -27,23 +27,15 @@ exec = require('child_process').exec
 # initialize database
 db = new nedb({ filename: './bookmarks.json', autoload: true })
 
-classifier = null
+tfidf = null
 
-loadClassifier = (callbackLoaded) ->
-  if fs.existsSync('./classifier.json')
-    natural.BayesClassifier.load 'classifier.json', null, (err, c) ->
-      if err
-        debugPrint err
-        classifier = new natural.BayesClassifier()
-        debugPrint "fresh new classifier"
-        callbackLoaded()
-      else
-        debugPrint "classifier loaded"
-        classifier = c
-        callbackLoaded()
+loadTfidf = ->
+  if fs.existsSync './tfidf.json'
+    string = fs.readFileSync './tfidf.json', 'utf8'
+    json = JSON.parse string
+    tfidf = new natural.TfIdf json
   else
-    classifier = new natural.BayesClassifier()
-    callbackLoaded()
+    tfidf = new natural.TfIdf()
 
 # printing functions
 debug = true
@@ -86,7 +78,7 @@ fetchUrl = (url, callbackErrHtml) ->
         callbackErrHtml(null, html)
 
   httpError = (err) ->
-    # errorPrint(err, + ' ' + url.red)
+    console.log('ERR'.red + ' ' + err.toString() + ': ' + url.toString().red)
     callbackErrHtml(err)
 
   require(protolib).get(url, response).on('error', httpError)
@@ -97,6 +89,9 @@ fetchUrl = (url, callbackErrHtml) ->
 cleanHTML = (html) ->
   $ = cheerio.load(html)
   title = $("title").text()
+  title = title.replace(/\s+/g, ' ')
+  title = title.replace(/^\s+|\s+$/g, '')
+
 
   # remove <head>
   text = html.replace(/<head>[\s\S]*<\/head>/g, ' ')
@@ -120,7 +115,7 @@ cleanHTML = (html) ->
 
 
 
-# add urls to classifier and database
+# add urls to tfidf and database
 indexUrls = (urls, callbackDone) ->
   debugPrint "indexing urls..."
 
@@ -130,6 +125,7 @@ indexUrls = (urls, callbackDone) ->
     db.count {url:url}, (err, count) ->
       if count isnt 0
         console.log "repeat: ".grey + url.grey
+        callbackFetch()
       else
         fetchUrl url, (err, html) ->
           if err
@@ -146,16 +142,19 @@ indexUrls = (urls, callbackDone) ->
                 callbackFetch()
                 # callbackFetch(err)
               else
-                classifier.addDocument(doc.url + ' ' + doc.title.toLowerCase() + ' ' + doc.text, doc._id)
+                tfidf.addDocument(doc.url + ' ' + doc.title.toLowerCase() + ' ' + doc.text, doc._id)
                 callbackFetch()
 
 
   doneFetching = (err) ->
     if err then errorPrint err
-    debugPrint("training classifier")
-    classifier.train()
-    debugPrint("serializing classifier")
-    classifier.save 'classifier.json', (err, classifier) -> callbackDone(err)
+    if errorUrls.length isnt 0
+      errorPrint "The following urls could not be added:"
+      for url in errorUrls
+        console.log url.grey
+    debugPrint("serializing tfidf")
+    json = JSON.stringify(tfidf)
+    fs.writeFile './tfidf.json', json, {encoding:'utf8'}, (err) -> callbackDone(err)
 
   async.each urls, fetchEach, doneFetching
 
@@ -164,11 +163,12 @@ indexUrls = (urls, callbackDone) ->
 
 reindex = (callbackDone) ->
   debugPrint "reindexing..."
-  classifier = new natural.BayesClassifier()
+  tfidf = new natural.TfIdf()
 
   db.find {}, (err, docs) ->
     if docs.length is 0
       errorPrint "Add urls before reindexing."
+      callbackDone()
     else
       urls = _.pluck docs, "url"
       db.remove {}, { multi: true }, (err, num) ->
@@ -180,45 +180,49 @@ reindex = (callbackDone) ->
 
 
 
-# rebuild the classifier from the database
-rebuildClassifier = (callbackDone) ->
-  debugPrint "rebuilding classifier..."
-  classifier = new natural.BayesClassifier()
+# rebuild the tfidf from the database
+rebuildTfidf = (callbackDone) ->
+  debugPrint "rebuilding tfidf..."
+  tfidf = new natural.TfIdf()
 
   update = (doc, callbackUpdate) ->
-    classifier.addDocument(doc.url + ' | ' + doc.title.toLowerCase() + ' | ' + doc.text, doc._id)
+    tfidf.addDocument(doc.url + ' | ' + doc.title.toLowerCase() + ' | ' + doc.text, doc._id)
     callbackUpdate()
 
   done = (err) ->
     if err
       callbackDone(err)
     else
-      debugPrint("training classifier")
-      classifier.train()
-      debugPrint("serializing classifier")
-      classifier.save 'classifier.json', (err, classifier) -> callbackDone(err)
+      debugPrint("serializing tfidf")
+      json = JSON.stringify(tfidf)
+      fs.writeFile './tfidf.json', json, {encoding:'utf8'}, (err) -> callbackDone(err)
 
   db.find {}, (err, docs) ->
     if docs.length isnt 0
       async.each docs, update, done
 
+searchTfidf = (text) ->
+  results = []
+  tfidf.tfidfs text, (index, score, id) ->
+    results.push {score:score, id:id}
+  return results
 
 search = (text, n, callbackResults) ->
   text = text.toLowerCase()
 
   debugPrint 'searching for "' + text + '"'
-  labelValues = classifier.getClassifications(text)
+  idScores = searchTfidf(text)
 
-  sorted = _.sortBy labelValues, (doc) -> -1*doc.value
-  ids = _.pluck sorted[0..n], "label"
+  sorted = _.sortBy idScores, (doc) -> -1*doc.score
+  ids = _.pluck sorted[0..n], "id"
 
   db.find {_id: $in: ids}, (err, docs) ->
     if err
       callbackResults(err)
     else
       results = _.sortBy docs, (doc) -> ids.indexOf(doc._id)
-      results = _.map results, (result, index) ->
-        result.score = sorted[index].value
+      results = _.map results, (result, i) ->
+        result.score = sorted[i].score
         return result
       sort = _.sortBy results, (doc) -> -1*doc.score
       callbackResults(null, sort)
@@ -255,15 +259,15 @@ if program.reindex
     debugPrint "finished"
 
 else if program.add
-  loadClassifier ->
-    indexUrls program.args, (err) ->
-      if err then errorPrint err
-      debugPrint "finished"
+  loadTfidf()
+  indexUrls program.args, (err) ->
+    if err then errorPrint err
+    debugPrint "finished"
 
 else if program.search
-  loadClassifier ->
-    search program.args.join(' '), 5, (err, results) ->
-      if err then errorPrint err else printSearchResults(results)
+  loadTfidf()
+  search program.args.join(' '), 20, (err, results) ->
+    if err then errorPrint err else printSearchResults(results)
 
 else if program.backup
   if not fs.existsSync('./backups/') then fs.mkdirSync('./backups/')
@@ -280,24 +284,26 @@ else if program.backups
 
 else if program.reset
   fs.unlink './bookmarks.json', (err) -> if err then debugPrint err
-  fs.unlink './classifier.json', (err) -> if err then debugPrint err
+  fs.unlink './tfidf.json', (err) -> if err then debugPrint err
 
   if typeof program.reset is "string"
     fs.createReadStream('./backups/' + program.reset).pipe(fs.createWriteStream('bookmarks.json'))
-    rebuildClassifier (err) ->
+    rebuildTfidf (err) ->
       if err then errorPrint err
       debugPrint "finished"
 
 else if program.safari
-  loadClassifier ->
-    p = exec "./safari.sh", (err, stdout, stderr) ->
-      if err
-        errorPrint err
-      else
-        bookmarks = stdout.split('\n')[..20]
-        indexUrls bookmarks, (err) ->
-          if err then errorPrint err
-          debugPrint "finished import safari bookmarks"
+  loadTfidf()
+  p = exec "./test1.sh", (err, stdout, stderr) ->
+    if err
+      errorPrint err
+    else
+      bookmarks = stdout.split('\n')[..-2]
+      bookmarks = _.uniq bookmarks
+      indexUrls bookmarks, (err) ->
+        if err then errorPrint err
+        debugPrint "finished import safari bookmarks"
+        # process.exit()
 
 else
   errorPrint "no args!"
