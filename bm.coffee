@@ -29,6 +29,21 @@ db = new nedb({ filename: './bookmarks.json', autoload: true })
 
 classifier = null
 
+loadClassifier = (callbackLoaded) ->
+  if fs.existsSync('./classifier.json')
+    natural.BayesClassifier.load 'classifier.json', null, (err, c) ->
+      if err
+        debugPrint err
+        classifier = new natural.BayesClassifier()
+        debugPrint "fresh new classifier"
+        callbackLoaded()
+      else
+        debugPrint "classifier loaded"
+        classifier = c
+        callbackLoaded()
+  else
+    classifier = new natural.BayesClassifier()
+    callbackLoaded()
 
 # printing functions
 debug = true
@@ -228,16 +243,7 @@ program
 
 
 
-loadClassifier = (callbackLoaded)->
-  natural.BayesClassifier.load 'classifier.json', null, (err, c) ->
-    if err
-      debugPrint err
-      classifier = new natural.BayesClassifier()
-      callbackLoaded()
-    else
-      debugPrint "classifier loaded"
-      classifier = c
-      callbackLoaded()
+
 
 
 if program.reindex
@@ -271,7 +277,7 @@ else if program.backups
 
 else if program.reset
   fs.unlink './bookmarks.json', (err) -> if err then debugPrint err
-  fs.unlink './tfidf.json', (err) -> if err then debugPrint err
+  fs.unlink './classifier.json', (err) -> if err then debugPrint err
 
   if typeof program.reset is "string"
     fs.createReadStream('./backups/' + program.reset).pipe(fs.createWriteStream('bookmarks.json'))
@@ -289,7 +295,7 @@ else if program.safari
         indexUrls bookmarks, (err) ->
           if err then errorPrint err
           debugPrint "finished import safari bookmarks"
-          
+
 else
   errorPrint "no args!"
 
