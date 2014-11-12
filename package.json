@@ -1,0 +1,23 @@
+{
+  "name": "bookmarks",
+  "version": "0.1.0",
+  "description": "A commandline tool for managing and search your bookmarks",
+  "author": "Chet Corcos <ccorcos@gmail.com> (http://www.chetcorcos.com/)",
+  "license": "MIT",
+  "dependencies": {
+    "mkdirp": "latest",
+    "path": "latest",
+    "fs": "latest",
+    "commander": "latest",
+    "colors": "latest",
+    "cheerio": "latest",
+    "url": "latest",
+    "entities": "latest",
+    "natural": "latest",
+    "lodash": "latest",
+    "async": "latest",
+    "nedb": "latest",
+    "sys": "latest",
+    "coffee-script": "latest"
+  }
+}

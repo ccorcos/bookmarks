@@ -1,5 +1,6 @@
 #!/usr/bin/env coffee
 
+{debugPrint, errorPrint, fetchPrint} = require './printing'
 
 # imports
 mkdirp = require 'mkdirp'
@@ -18,8 +19,6 @@ sys = require 'sys'
 exec = require('child_process').exec
 
 
-
-
 # initialize database
 db = new nedb({ filename: './bookmarks.json', autoload: true })
 
@@ -32,23 +31,6 @@ loadTfidf = ->
     tfidf = new natural.TfIdf json
   else
     tfidf = new natural.TfIdf()
-
-# printing functions
-debug = true
-debugPrint = (msg) ->
-  if debug then console.log('DEBUG: '.yellow + msg)
-
-errorPrint = (msg) ->
-  console.log('ERROR: '.red + msg)
-
-fetchPrint = (success, statusCode, contentType, url) ->
-  if success
-    console.log(statusCode.toString().magenta + ' ' + contentType + ': ' + url.toString().green)
-  else
-    console.log(statusCode.toString().magenta + ' ' + contentType + ': ' + url.toString().red)
-
-
-
 
 
 
@@ -246,9 +228,6 @@ program
 
 
 
-
-
-
 if program.reindex
   reindex (err) ->
     if err then errorPrint err
@@ -290,7 +269,7 @@ else if program.reset
 
 else if program.safari
   loadTfidf()
-  p = exec "./test1.sh", (err, stdout, stderr) ->
+  p = exec "./safari.sh", (err, stdout, stderr) ->
     if err
       errorPrint err
     else
@@ -299,7 +278,6 @@ else if program.safari
       indexUrls bookmarks, (err) ->
         if err then errorPrint err
         debugPrint "finished import safari bookmarks"
-        # process.exit()
 
 else
   errorPrint "no args!"
